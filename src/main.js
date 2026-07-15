@@ -427,7 +427,6 @@ let captionTimer = null;
 let speechFallbackTimer = null;
 let activeCaption = null;
 let activeSpeech = null;
-let mutedVisualResume = null;
 let lastMessageId = "";
 let lastSpokenSection = "";
 let guidePaused = false;
@@ -542,7 +541,6 @@ function resetGuideIdle() {
   window.clearTimeout(tourTimer);
   window.clearTimeout(speechFallbackTimer);
   activeCaption = null;
-  mutedVisualResume = null;
   lastMessageId = "";
   lastSpokenSection = "";
   spotlight(null);
@@ -609,7 +607,6 @@ function unlockSpeechForGesture() {
 
 function cancelSpeech() {
   window.clearTimeout(speechFallbackTimer);
-  mutedVisualResume = null;
   activeSpeech = null;
   if (synth) {
     if (synth.paused) synth.resume();
@@ -642,7 +639,7 @@ function waitForReadableDuration(duration) {
 function estimateMessageDuration(text) {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   const sentenceCount = Math.max(1, (text.match(/[.!?]/g) || []).length);
-  return Math.max(2800, Math.min(18000, words * 330 + sentenceCount * 650 + 900));
+  return Math.max(2400, Math.min(16000, words * 285 + sentenceCount * 540 + 650));
 }
 
 function scrollToMessageTarget(message) {
@@ -701,7 +698,7 @@ function speakAgentMessage(message, options = {}) {
   if (!message) return;
   const shouldSpeak = (voiceEnabled || options.forceVoice) && !muted && synth;
   if (shouldSpeak) cancelSpeech();
-  setGuideText(message, { autoAdvance: true, duration: fallbackDuration, speechSynced: shouldSpeak });
+  setGuideText(message, { autoAdvance: true, duration: fallbackDuration });
   if (!shouldSpeak) {
     updateAgentControls();
     return options.waitForText ? waitForReadableDuration(fallbackDuration) : Promise.resolve();
@@ -710,20 +707,6 @@ function speakAgentMessage(message, options = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let speechStarted = false;
-    let mutedFallbackStarted = false;
-    const finishMutedSpeechVisually = () => {
-      if (mutedFallbackStarted) return;
-      mutedFallbackStarted = true;
-      isSpeaking = false;
-      document.querySelector(".guide")?.classList.remove("is-speaking");
-      const remainingDuration = getCaptionRemainingDuration(fallbackDuration);
-      mutedVisualResume = { done };
-      startCaptionAutoAdvance(remainingDuration);
-      waitForReadableDuration(remainingDuration).then(() => {
-        mutedVisualResume = null;
-        done();
-      });
-    };
     const done = () => {
       if (settled) return;
       settled = true;
@@ -752,28 +735,19 @@ function speakAgentMessage(message, options = {}) {
       updateAgentControls();
     };
     utterance.onboundary = (event) => {
-      if (event.name && event.name !== "word") return;
-      const charIndex = event.charIndex || 0;
+      const charIndex = Number.isFinite(event.charIndex) ? event.charIndex : 0;
       if (activeSpeech) activeSpeech.lastChar = Math.max(activeSpeech.lastChar || 0, charIndex);
-      syncCaptionToChar(charIndex, { fromBoundary: true });
+      syncCaptionToChar(charIndex);
     };
     utterance.onend = () => {
-      if (muted && speechStarted) {
-        finishMutedSpeechVisually();
-        return;
-      }
       done();
     };
     utterance.onerror = () => {
-      if (muted && speechStarted) {
-        finishMutedSpeechVisually();
-        return;
-      }
       if (speechStarted) {
         done();
         return;
       }
-      setGuideText(message, { autoAdvance: true, duration: fallbackDuration, speechSynced: false });
+      setGuideText(message, { autoAdvance: true, duration: fallbackDuration });
       waitForReadableDuration(fallbackDuration).then(done);
     };
     synth.speak(utterance);
@@ -828,19 +802,19 @@ function animateGuideCaption(node, text, options = {}) {
     text,
     segments,
     index: 0,
+    startChar: 0,
     captionChar: segments[0].start,
     spokenChar: segments[0].start,
-    speechSynced: Boolean(options.speechSynced),
     startedAt: Date.now(),
+    duration: options.duration || estimateMessageDuration(text),
     segmentShownAt: Date.now(),
-    hasBoundary: false,
     autoAdvance: options.autoAdvance !== false,
   };
   node.textContent = segments[0].text;
 
   if (options.autoAdvance === false) return;
 
-  startCaptionAutoAdvance(options.duration || estimateMessageDuration(text));
+  startCaptionAutoAdvance(activeCaption.duration);
 }
 
 function getCaptionRemainingDuration(totalDuration) {
@@ -851,29 +825,23 @@ function getCaptionRemainingDuration(totalDuration) {
   return Math.max(650, totalDuration * remainingRatio);
 }
 
-function startCaptionAutoAdvance(duration) {
+function startCaptionAutoAdvance(duration, startChar = getCaptionResumeChar()) {
   window.clearInterval(captionTimer);
   if (!activeCaption) return;
   activeCaption.autoAdvance = true;
-  const remainingSegments = Math.max(1, activeCaption.segments.length - activeCaption.index);
-  const intervalScale = activeCaption.speechSynced ? 1.28 : 1.08;
-  const interval = Math.max(680, Math.min(1850, (duration / remainingSegments) * intervalScale));
+  activeCaption.duration = duration;
+  activeCaption.startedAt = Date.now();
+  activeCaption.startChar = Math.max(0, Math.min(startChar, activeCaption.text.length));
+  syncCaptionToChar(activeCaption.startChar);
   captionTimer = window.setInterval(() => {
     if (!activeCaption) return;
     if (tourPaused) return;
-    if (activeCaption.speechSynced) {
-      if (activeCaption.hasBoundary) return;
-      if (!activeSpeech) return;
-      const elapsed = Date.now() - (activeSpeech.startedAt || Date.now());
-      if (elapsed < 900) return;
-      const estimatedChar = estimateSpeechChar();
-      if (estimatedChar > getCaptionResumeChar()) syncCaptionToChar(estimatedChar, { fromBoundary: false });
-      return;
-    }
-    const nextIndex = Math.min(activeCaption.index + 1, activeCaption.segments.length - 1);
-    showCaptionSegment(nextIndex);
-    if (nextIndex >= activeCaption.segments.length - 1) window.clearInterval(captionTimer);
-  }, interval);
+    const elapsed = Date.now() - activeCaption.startedAt;
+    const progress = Math.max(0, Math.min(1, elapsed / Math.max(1, activeCaption.duration)));
+    const targetChar = activeCaption.startChar + Math.floor((activeCaption.text.length - activeCaption.startChar) * progress);
+    syncCaptionToChar(targetChar);
+    if (progress >= 1) window.clearInterval(captionTimer);
+  }, 80);
 }
 
 function createCaptionSegments(text) {
@@ -901,21 +869,20 @@ function createCaptionSegments(text) {
   return segments;
 }
 
-function syncCaptionToChar(charIndex, options = {}) {
+function syncCaptionToChar(charIndex) {
   if (!activeCaption) return;
   const safeChar = Math.max(0, Math.min(charIndex, activeCaption.text?.length || charIndex));
-  if (options.fromBoundary !== false) activeCaption.hasBoundary = true;
   activeCaption.spokenChar = Math.max(activeCaption.spokenChar || 0, safeChar);
   let nextIndex = activeCaption.index;
   activeCaption.segments.forEach((segment, index) => {
     if (segment.start <= safeChar) nextIndex = index;
   });
-  showCaptionSegment(nextIndex, { allowBack: true, updateCaptionChar: false });
+  showCaptionSegment(nextIndex, { updateCaptionChar: false });
 }
 
 function showCaptionSegment(index, options = {}) {
   if (!activeCaption || index === activeCaption.index) return;
-  if (!options.allowBack && index < activeCaption.index) return;
+  if (index < activeCaption.index) return;
   activeCaption.index = index;
   activeCaption.segmentShownAt = Date.now();
   if (options.updateCaptionChar !== false) {
@@ -926,28 +893,21 @@ function showCaptionSegment(index, options = {}) {
 
 function getCaptionResumeChar() {
   if (!activeCaption) return 0;
-  return activeCaption.hasBoundary ? activeCaption.spokenChar || 0 : activeCaption.captionChar || 0;
-}
-
-function estimateSpeechChar() {
-  if (!activeSpeech?.text || !activeSpeech.startedAt || !activeSpeech.duration) return 0;
-  const elapsed = Math.max(0, Date.now() - activeSpeech.startedAt);
-  const progress = Math.max(0, Math.min(0.98, elapsed / activeSpeech.duration));
-  const target = activeSpeech.startChar + Math.floor((activeSpeech.text.length - activeSpeech.startChar) * progress);
-  return wordResumeStart(activeSpeech.text, target);
+  return Math.max(activeCaption.spokenChar || 0, activeCaption.captionChar || 0);
 }
 
 function capturePauseProgress() {
   if (!activeCaption) return;
+  const elapsed = Date.now() - (activeCaption.startedAt || Date.now());
+  const progress = Math.max(0, Math.min(1, elapsed / Math.max(1, activeCaption.duration || 1)));
   const sameMessage = activeSpeech?.messageId && activeSpeech.messageId === activeCaption.messageId;
+  const timedChar = (activeCaption.startChar || 0) + (activeCaption.text.length - (activeCaption.startChar || 0)) * progress;
   const boundaryChar = sameMessage ? activeSpeech.lastChar || 0 : 0;
-  const timedChar = sameMessage ? estimateSpeechChar() : 0;
   const currentChar = Math.max(getCaptionResumeChar(), boundaryChar, timedChar);
   const resumeChar = wordResumeStart(activeCaption.text || "", currentChar);
   activeCaption.spokenChar = Math.max(activeCaption.spokenChar || 0, resumeChar);
   activeCaption.captionChar = Math.max(activeCaption.captionChar || 0, resumeChar);
-  activeCaption.hasBoundary = activeCaption.hasBoundary || Boolean(boundaryChar || timedChar);
-  syncCaptionToChar(resumeChar, { fromBoundary: false });
+  syncCaptionToChar(resumeChar);
 }
 
 function wordResumeStart(text, charIndex) {
@@ -967,7 +927,8 @@ function speakFromCurrentCaption() {
   const start = wordResumeStart(message.text, getCaptionResumeChar());
   const text = message.text.slice(start).trim();
   if (!text) return false;
-  syncCaptionToChar(start, { fromBoundary: false });
+  syncCaptionToChar(start);
+  startCaptionAutoAdvance(getCaptionRemainingDuration(estimateMessageDuration(message.text)), start);
 
   window.clearTimeout(speechFallbackTimer);
 
@@ -986,9 +947,6 @@ function speakFromCurrentCaption() {
       activeSpeech = null;
       isSpeaking = false;
       document.querySelector(".guide")?.classList.remove("is-speaking");
-      const resume = mutedVisualResume;
-      mutedVisualResume = null;
-      resume?.done?.();
       updateAgentControls();
       resolve();
     };
@@ -1009,10 +967,9 @@ function speakFromCurrentCaption() {
       updateAgentControls();
     };
     utterance.onboundary = (event) => {
-      if (event.name && event.name !== "word") return;
-      const charIndex = start + (event.charIndex || 0);
+      const charIndex = start + (Number.isFinite(event.charIndex) ? event.charIndex : 0);
       if (activeSpeech) activeSpeech.lastChar = Math.max(activeSpeech.lastChar || 0, charIndex);
-      syncCaptionToChar(charIndex, { fromBoundary: true });
+      syncCaptionToChar(charIndex);
     };
     utterance.onend = finishCatchup;
     utterance.onerror = finishCatchup;
