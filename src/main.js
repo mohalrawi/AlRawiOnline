@@ -2,7 +2,7 @@ const LINKS = {
   email: "mailto:moh.raid@yahoo.com",
   linkedin: "https://www.linkedin.com/in/al-rawi/",
   github: "https://github.com/mohalrawi",
-  resume: "/src/assets/Mohammed_Al-Rawi_Resume.pdf",
+  resume: "./src/assets/Mohammed_Al-Rawi_Resume.pdf",
 };
 
 const originalAgentMessages = [
@@ -304,7 +304,7 @@ function projects() {
       kicker: "Workflow",
       name: "RetroAI",
       desc: "AI-powered retrospective tool for Scrum Masters and agile teams.",
-      image: "/src/assets/retro-ai.png",
+      image: "./src/assets/retro-ai.png",
       messageId: "retroai",
       cta: "Open Product",
       href: "https://retroai-kappa.vercel.app/",
@@ -313,14 +313,14 @@ function projects() {
       kicker: "AI / Computer Vision",
       name: "Valorant AI Coach",
       desc: "Real-time computer vision coach that analyzes crosshair placement and gives targeted feedback.",
-      image: "/src/assets/valorant-ai.png",
+      image: "./src/assets/valorant-ai.png",
       messageId: "valorant",
     },
     {
       kicker: "Product / Gaming",
       name: "Demon Keying",
       desc: "Impossible typing game with multiple modes and global leaderboards.",
-      image: "/src/assets/demon-keying.png",
+      image: "./src/assets/demon-keying.png",
       messageId: "keyboard",
       cta: "Launch Game",
       href: "https://www.demonkeying.com/",
