@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "node -e \"console.log('Static site: no build step required')\"",
+    "preview": "node server.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
