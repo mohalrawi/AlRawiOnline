@@ -775,7 +775,7 @@ p {
 }
 
 .guide p.is-typing {
-  animation: message-reveal 420ms ease both;
+  animation: none;
 }
 
 [data-intro-message].is-typing {
@@ -2144,6 +2144,79 @@ blockquote {
 
   .prism-ring {
     width: 280px;
+  }
+
+  .medical-ui {
+    min-height: 390px;
+  }
+
+  .medical-ui__stage {
+    inset: 58px 18px 42px 18px;
+  }
+
+  .scapula {
+    top: 76px;
+    left: 122px;
+    width: 142px;
+    height: 164px;
+  }
+
+  .humerus {
+    top: 132px;
+    left: 136px;
+    width: 108px;
+    height: 250px;
+  }
+
+  .humerus::before {
+    top: -62px;
+    left: -42px;
+    width: 164px;
+    height: 118px;
+  }
+
+  .implant--cap {
+    top: 80px;
+    left: 104px;
+    width: 178px;
+    height: 100px;
+  }
+
+  .planning-wire--green {
+    top: 78px;
+    left: 82px;
+    width: 330px;
+  }
+
+  .planning-wire--white {
+    top: 30px;
+    left: 126px;
+    width: 260px;
+  }
+
+  .planning-wire--axis {
+    top: 74px;
+    left: 80px;
+    width: 330px;
+  }
+
+  .planning-wire--red {
+    top: 170px;
+    left: 70px;
+    width: 330px;
+  }
+
+  .medical-ui__measure {
+    right: 12px;
+    min-width: 78px;
+  }
+
+  .medical-ui__measure--angle {
+    top: 104px;
+  }
+
+  .medical-ui__measure--offset {
+    bottom: 70px;
   }
 
   .medical-ui__side {
